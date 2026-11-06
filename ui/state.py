@@ -20,6 +20,12 @@ EXPRESSION_KEY = "expression"
 #: Session-state key holding the latest :class:`Outcome`.
 OUTCOME_KEY = "outcome"
 
+#: Session-state key holding successful outcomes, newest first.
+HISTORY_KEY = "history"
+
+#: Maximum number of history entries kept per session.
+MAX_HISTORY = 20
+
 
 @dataclass(frozen=True)
 class Outcome:
@@ -40,6 +46,7 @@ def init_state() -> None:
     """Populate session state with defaults on the first run of a session."""
     st.session_state.setdefault(EXPRESSION_KEY, "")
     st.session_state.setdefault(OUTCOME_KEY, None)
+    st.session_state.setdefault(HISTORY_KEY, [])
 
 
 def insert_text(text: str) -> None:
@@ -75,3 +82,33 @@ def compute() -> None:
     except CalculatorError as exc:
         outcome = Outcome("error", expression, str(exc))
     st.session_state[OUTCOME_KEY] = outcome
+    if outcome.status == "ok":
+        _add_to_history(outcome)
+
+
+def _add_to_history(outcome: Outcome) -> None:
+    """Prepend a successful outcome to the history, skipping repeats.
+
+    Args:
+        outcome: A successful calculation outcome.
+    """
+    history: list[Outcome] = st.session_state[HISTORY_KEY]
+    if history and history[0] == outcome:
+        return
+    history.insert(0, outcome)
+    del history[MAX_HISTORY:]
+
+
+def restore(outcome: Outcome) -> None:
+    """Load a history entry back into the input and result display.
+
+    Args:
+        outcome: The history entry selected by the user.
+    """
+    st.session_state[EXPRESSION_KEY] = outcome.expression
+    st.session_state[OUTCOME_KEY] = outcome
+
+
+def clear_history() -> None:
+    """Remove all history entries for the current session."""
+    st.session_state[HISTORY_KEY] = []

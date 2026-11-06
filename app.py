@@ -9,6 +9,7 @@ import streamlit as st
 
 from calc.validator import MAX_LENGTH
 from ui.display import render_result
+from ui.history import render_history
 from ui.keypad import render_keypad
 from ui.state import EXPRESSION_KEY, compute, init_state
 
@@ -29,6 +30,7 @@ def main() -> None:
     )
     render_result()
     render_keypad()
+    render_history()
 
 
 if __name__ == "__main__":

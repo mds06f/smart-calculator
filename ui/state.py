@@ -12,6 +12,7 @@ import streamlit as st
 
 from calc import CalculatorError
 from calc.engine import calculate
+from calc.validator import MAX_LENGTH
 
 #: Session-state key bound to the expression text input.
 EXPRESSION_KEY = "expression"
@@ -39,6 +40,28 @@ def init_state() -> None:
     """Populate session state with defaults on the first run of a session."""
     st.session_state.setdefault(EXPRESSION_KEY, "")
     st.session_state.setdefault(OUTCOME_KEY, None)
+
+
+def insert_text(text: str) -> None:
+    """Append ``text`` to the expression, respecting the length limit.
+
+    Args:
+        text: Characters to append (e.g. ``"7"``, ``"×"`` or ``"sin("``).
+    """
+    current = st.session_state[EXPRESSION_KEY]
+    if len(current) + len(text) <= MAX_LENGTH:
+        st.session_state[EXPRESSION_KEY] = current + text
+
+
+def backspace() -> None:
+    """Delete the last character of the expression."""
+    st.session_state[EXPRESSION_KEY] = st.session_state[EXPRESSION_KEY][:-1]
+
+
+def clear() -> None:
+    """Clear the expression and the displayed result."""
+    st.session_state[EXPRESSION_KEY] = ""
+    st.session_state[OUTCOME_KEY] = None
 
 
 def compute() -> None:

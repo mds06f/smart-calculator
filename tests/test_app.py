@@ -6,6 +6,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from ui.display import escape_markdown
+from ui.keypad import MAIN_LAYOUT, SCIENTIFIC_LAYOUT
 from ui.state import EXPRESSION_KEY, HISTORY_KEY, MAX_HISTORY
 
 APP_PATH = Path(__file__).resolve().parent.parent / "app.py"
@@ -26,6 +27,12 @@ def press(at: AppTest, label: str) -> None:
     at.run()
 
 
+def press_key(at: AppTest, key: str) -> None:
+    """Click the button with widget key ``key`` and rerun the app."""
+    at.button(key=key).click()
+    at.run()
+
+
 def enter(at: AppTest, expression: str) -> None:
     """Type ``expression`` into the input box and submit it."""
     at.text_input(key=EXPRESSION_KEY).input(expression)
@@ -43,21 +50,30 @@ def test_error_is_shown(app):
     assert len(app.metric) == 0
 
 
+def test_every_layout_key_is_rendered(app):
+    rendered = {b.key for b in app.button}
+    for row in SCIENTIFIC_LAYOUT + MAIN_LAYOUT:
+        for key in row:
+            assert key.widget_key in rendered
+    assert "equals" in rendered
+
+
 def test_keypad_builds_and_evaluates_expression(app):
-    for label in ["√", "1", "6", ")", "×", "2", "xʸ", "3"]:
-        press(app, label)
+    keys = ["sci_sqrt", "num_1", "num_6", "num_rparen", "op_mul", "num_2", "sci_pow", "num_3"]
+    for key in keys:
+        press_key(app, key)
     assert app.text_input(key=EXPRESSION_KEY).value == "√(16)×2^3"
-    press(app, "=")
+    press_key(app, "equals")
     assert app.metric[0].value == "32"
 
 
 def test_backspace_and_clear(app):
-    for label in ["1", "2", "+"]:
-        press(app, label)
-    press(app, "⌫")
+    for key in ["num_1", "num_2", "op_add"]:
+        press_key(app, key)
+    press_key(app, "ctrl_backspace")
     assert app.text_input(key=EXPRESSION_KEY).value == "12"
-    press(app, "=")
-    press(app, "C")
+    press_key(app, "equals")
+    press_key(app, "ctrl_clear")
     assert app.text_input(key=EXPRESSION_KEY).value == ""
     assert len(app.metric) == 0
 

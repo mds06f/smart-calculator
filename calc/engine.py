@@ -22,7 +22,48 @@ DISPLAY_PRECISION = 12
 #: Integers with more digits than this are shown in scientific notation.
 MAX_PLAIN_INTEGER_DIGITS = 20
 
+#: Upper bound on the size of a power result, in decimal digits
+#: (roughly ``|exponent| * log10(|base|)``). Stops ``9**9**9``-style DoS.
+MAX_RESULT_DIGITS = 10_000
+
+#: Largest argument accepted by ``factorial``.
+MAX_FACTORIAL = 1_000
+
 _CONSTANTS: dict[str, sp.Expr] = {"pi": sp.pi, "e": sp.E}
+
+
+def _safe_pow(base: sp.Expr, exponent: sp.Expr) -> sp.Expr:
+    """Raise ``base`` to ``exponent`` after checking the result size.
+
+    Exact integer powers are computed eagerly by SymPy, so a huge result
+    would exhaust CPU and memory. The size is estimated with logarithms
+    before computing anything.
+
+    Raises:
+        EvaluationError: If the result would exceed :data:`MAX_RESULT_DIGITS`.
+    """
+    magnitude = abs(base.evalf(15))
+    if magnitude.is_zero or magnitude == 1:
+        return base**exponent
+    digits = abs(exponent.evalf(15)) * abs(sp.log(magnitude, 10).evalf(15))
+    if digits > MAX_RESULT_DIGITS:
+        raise EvaluationError("Result is out of range (too large or too small).")
+    return base**exponent
+
+
+def _safe_factorial(value: sp.Expr) -> sp.Expr:
+    """Compute ``value!`` for non-negative integers up to :data:`MAX_FACTORIAL`.
+
+    Raises:
+        EvaluationError: If ``value`` is not a non-negative integer or is
+            larger than the allowed maximum.
+    """
+    if not (value.is_Integer and value >= 0):
+        raise EvaluationError("Factorial is only defined for non-negative integers.")
+    if value > MAX_FACTORIAL:
+        raise EvaluationError(f"Factorial argument too large (max {MAX_FACTORIAL}).")
+    return sp.factorial(value)
+
 
 _FUNCTIONS: dict[str, Callable[[sp.Expr], sp.Expr]] = {
     "sqrt": sp.sqrt,
@@ -37,7 +78,7 @@ _FUNCTIONS: dict[str, Callable[[sp.Expr], sp.Expr]] = {
     "asin": sp.asin,
     "acos": sp.acos,
     "atan": sp.atan,
-    "factorial": sp.factorial,
+    "factorial": _safe_factorial,
 }
 
 _BINARY_OPS: dict[type, Callable[[sp.Expr, sp.Expr], sp.Expr]] = {
@@ -45,7 +86,7 @@ _BINARY_OPS: dict[type, Callable[[sp.Expr, sp.Expr], sp.Expr]] = {
     ast.Sub: operator.sub,
     ast.Mult: operator.mul,
     ast.Div: operator.truediv,
-    ast.Pow: operator.pow,
+    ast.Pow: _safe_pow,
     ast.Mod: operator.mod,
 }
 

@@ -10,7 +10,9 @@ See the [architecture diagram](docs/architecture/) and the
 ## Features
 
 - Expression input with **Enter** / **=** to evaluate
-- On-screen keypad: digits, `+ − × ÷ % ^`, parentheses, `π`, `e`
+- Calculator-style keypad: large digit/operator keys, clear and backspace,
+  plus a compact scientific row (`sin`, `√`, `xʸ`, `π`, `n!`, …); keeps its
+  grid layout on mobile
 - Functions: `sqrt`, `abs`, `exp`, `ln`, `log` (natural), `log10`,
   `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `factorial`
 - Exact maths with SymPy (`0.1 + 0.2 = 0.3`, `sin(π/2) = 1`)
@@ -69,6 +71,7 @@ User input is **never** passed to `eval`, `exec` or `sympy.sympify`.
 2. **Engine:** walks the validated AST and builds the SymPy expression
    node by node. Power results are capped at 10,000 digits and `factorial` at
    1,000, which blocks DoS inputs such as `9**9**9`.
-3. **UI:** labels are Markdown-escaped and no raw HTML is rendered.
+3. **UI:** labels are Markdown-escaped and user input is never rendered as
+   HTML. The only HTML injected is a static keypad stylesheet.
 
 A full security audit is planned for Phase 3.

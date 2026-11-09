@@ -1,114 +1,240 @@
-"""Session-state management and actions triggered by UI widgets.
 
-Every function here is used as a Streamlit widget callback, which runs
-*before* the script re-renders. That is the only point at which it is
-allowed to modify the value of a widget such as the expression input.
-"""
+"""Natural-language calculator state and evaluation logic."""
 
-from dataclasses import dataclass
-from typing import Literal
+import ast
+import operator
+import re
 
 import streamlit as st
-
-from calc import CalculatorError
-from calc.engine import calculate
-from calc.validator import MAX_LENGTH
-
-#: Session-state key bound to the expression text input.
-EXPRESSION_KEY = "expression"
-
-#: Session-state key holding the latest :class:`Outcome`.
-OUTCOME_KEY = "outcome"
-
-#: Session-state key holding successful outcomes, newest first.
-HISTORY_KEY = "history"
-
-#: Maximum number of history entries kept per session.
-MAX_HISTORY = 20
+from word2number import w2n
 
 
-@dataclass(frozen=True)
-class Outcome:
-    """Result of the most recent calculation attempt.
+# Supported mathematical operators
+OPERATORS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.Pow: operator.pow,
+    ast.Mod: operator.mod,
+    ast.USub: operator.neg,
+    ast.UAdd: operator.pos,
+}
 
-    Attributes:
-        status: ``"ok"`` for a successful calculation, ``"error"`` otherwise.
-        expression: The expression that was evaluated.
-        message: The formatted result, or the error message.
-    """
-
-    status: Literal["ok", "error"]
-    expression: str
-    message: str
-
-
-def init_state() -> None:
-    """Populate session state with defaults on the first run of a session."""
-    st.session_state.setdefault(EXPRESSION_KEY, "")
-    st.session_state.setdefault(OUTCOME_KEY, None)
-    st.session_state.setdefault(HISTORY_KEY, [])
-
-
-def insert_text(text: str) -> None:
-    """Append ``text`` to the expression, respecting the length limit.
-
-    Args:
-        text: Characters to append (e.g. ``"7"``, ``"×"`` or ``"sin("``).
-    """
-    current = st.session_state[EXPRESSION_KEY]
-    if len(current) + len(text) <= MAX_LENGTH:
-        st.session_state[EXPRESSION_KEY] = current + text
+# Supported mathematical functions
+FUNCTIONS = {
+    "sqrt": __import__("math").sqrt,
+    "sin": __import__("math").sin,
+    "cos": __import__("math").cos,
+    "tan": __import__("math").tan,
+    "log": __import__("math").log10,
+    "ln": __import__("math").log,
+    "factorial": __import__("math").factorial,
+    "abs": abs,
+}
 
 
-def backspace() -> None:
-    """Delete the last character of the expression."""
-    st.session_state[EXPRESSION_KEY] = st.session_state[EXPRESSION_KEY][:-1]
+# Number words recognised by word2number
+NUMBER_WORDS = (
+    "zero one two three four five six seven eight nine ten "
+    "eleven twelve thirteen fourteen fifteen sixteen seventeen "
+    "eighteen nineteen twenty thirty forty fifty sixty seventy "
+    "eighty ninety hundred thousand million billion point and"
+)
+
+NUMBER_PATTERN = re.compile(
+    r"\b(?:" + NUMBER_WORDS.replace(" ", "|") + r")\b(?:[\s-]+\b(?:"
+    + NUMBER_WORDS.replace(" ", "|") + r")\b)*",
+    re.IGNORECASE,
+)
 
 
-def clear() -> None:
-    """Clear the expression and the displayed result."""
-    st.session_state[EXPRESSION_KEY] = ""
-    st.session_state[OUTCOME_KEY] = None
+def normalize_expression(expression: str) -> str:
+    """Convert natural-language mathematics into a mathematical expression."""
+
+    expression = expression.lower().strip()
+
+    # Mathematical functions
+    expression = re.sub(
+        r"square root of",
+        "sqrt ",
+        expression
+    )
+
+    expression = re.sub(
+        r"square root",
+        "sqrt",
+        expression
+    )
+
+    # Natural-language operators
+    replacements = {
+        "multiplied by": "*",
+        "times": "*",
+        "divided by": "/",
+        "divided": "/",
+        "plus": "+",
+        "added to": "+",
+        "minus": "-",
+        "subtracted by": "-",
+        "to the power of": "**",
+        "raised to the power of": "**",
+        "raised to": "**",
+        "power of": "**",
+        "modulo": "%",
+        "modulus": "%",
+    }
+
+    for phrase, symbol in replacements.items():
+        expression = expression.replace(phrase, symbol)
+
+    # Convert number words into numeric values
+    def convert_number(match):
+        phrase = match.group(0).replace("-", " ")
+        try:
+            return str(w2n.word_to_num(phrase))
+        except ValueError:
+            return phrase
+
+    expression = NUMBER_PATTERN.sub(convert_number, expression)
+
+    # Convert function expressions such as "sqrt 16" into "sqrt(16)"
+    expression = re.sub(
+        r"\b(sqrt|sin|cos|tan|ln|log|factorial)\s+"
+        r"(-?\d+(?:\.\d+)?)",
+        r"\1(\2)",
+        expression
+    )
+
+    # Remove common filler words
+    expression = re.sub(r"\b(what is|calculate|evaluate)\b", "", expression)
+
+    # Replace mathematical symbols
+    expression = expression.replace("×", "*")
+    expression = expression.replace("÷", "/")
+    expression = expression.replace("^", "**")
+    expression = expression.replace("π", "3.141592653589793")
+
+    return expression.strip()
 
 
-def compute() -> None:
-    """Evaluate the current expression and store the outcome."""
-    expression = st.session_state[EXPRESSION_KEY].strip()
-    if not expression:
-        st.session_state[OUTCOME_KEY] = None
-        return
+def safe_evaluate(node):
+    """Evaluate only explicitly permitted mathematical AST nodes."""
+
+    if isinstance(node, ast.Expression):
+        return safe_evaluate(node.body)
+
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
+            return node.value
+        raise ValueError("Invalid value.")
+
+    if isinstance(node, ast.BinOp):
+        operation = OPERATORS.get(type(node.op))
+
+        if operation is None:
+            raise ValueError("Unsupported operator.")
+
+        left = safe_evaluate(node.left)
+        right = safe_evaluate(node.right)
+
+        return operation(left, right)
+
+    if isinstance(node, ast.UnaryOp):
+        operation = OPERATORS.get(type(node.op))
+
+        if operation is None:
+            raise ValueError("Unsupported operation.")
+
+        return operation(safe_evaluate(node.operand))
+
+    if isinstance(node, ast.Call):
+        if not isinstance(node.func, ast.Name):
+            raise ValueError("Invalid function.")
+
+        function = FUNCTIONS.get(node.func.id)
+
+        if function is None:
+            raise ValueError("Unsupported mathematical function.")
+
+        if node.keywords:
+            raise ValueError("Invalid arguments.")
+
+        arguments = [safe_evaluate(arg) for arg in node.args]
+
+        if len(arguments) != 1:
+            raise ValueError("This function requires one argument.")
+
+        return function(*arguments)
+
+    raise ValueError("Invalid mathematical expression.")
+
+
+def calculate(expression: str):
+    """Parse and calculate a natural-language expression."""
+
+    normalized = normalize_expression(expression)
+
+    if not normalized:
+        raise ValueError("Please enter an expression.")
+
     try:
-        outcome = Outcome("ok", expression, calculate(expression))
-    except CalculatorError as exc:
-        outcome = Outcome("error", expression, str(exc))
-    st.session_state[OUTCOME_KEY] = outcome
-    if outcome.status == "ok":
-        _add_to_history(outcome)
+        tree = ast.parse(normalized, mode="eval")
+        result = safe_evaluate(tree)
+
+        if isinstance(result, complex):
+            raise ValueError("Complex results are not supported.")
+
+        if isinstance(result, float) and not __import__("math").isfinite(result):
+            raise ValueError("Result is not finite.")
+
+        return result
+
+    except ZeroDivisionError:
+        raise ValueError("Cannot divide by zero.")
+
+    except SyntaxError:
+        raise ValueError("Could not understand the expression.")
+
+    except (OverflowError, ValueError) as error:
+        raise ValueError(str(error))
 
 
-def _add_to_history(outcome: Outcome) -> None:
-    """Prepend a successful outcome to the history, skipping repeats.
+# Streamlit session-state functions
 
-    Args:
-        outcome: A successful calculation outcome.
-    """
-    history: list[Outcome] = st.session_state[HISTORY_KEY]
-    if history and history[0] == outcome:
-        return
-    history.insert(0, outcome)
-    del history[MAX_HISTORY:]
+def compute():
+    """Calculate the expression currently stored in Streamlit state."""
 
+    expression = st.session_state.get("expression", "")
 
-def restore(outcome: Outcome) -> None:
-    """Load a history entry back into the input and result display.
+    try:
+        result = calculate(expression)
+        st.session_state["result"] = result
+        st.session_state["calculation_error"] = None
 
-    Args:
-        outcome: The history entry selected by the user.
-    """
-    st.session_state[EXPRESSION_KEY] = outcome.expression
-    st.session_state[OUTCOME_KEY] = outcome
+    except (ValueError, TypeError, ArithmeticError) as error:
+        st.session_state["result"] = None
+        st.session_state["calculation_error"] = str(error)
 
 
-def clear_history() -> None:
-    """Remove all history entries for the current session."""
-    st.session_state[HISTORY_KEY] = []
+def clear():
+    """Clear the expression and result."""
+
+    st.session_state["expression"] = ""
+    st.session_state["result"] = None
+    st.session_state["calculation_error"] = None
+
+
+def backspace():
+    """Remove the last character."""
+
+    expression = st.session_state.get("expression", "")
+    st.session_state["expression"] = expression[:-1]
+
+
+def insert_text(value: str):
+    """Append text to the expression."""
+
+    st.session_state["expression"] = (
+        st.session_state.get("expression", "") + value
+    )

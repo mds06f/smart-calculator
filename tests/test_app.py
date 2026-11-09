@@ -9,7 +9,8 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from ui.state import INPUT_KEY
+from ui.history import escape_markdown
+from ui.state import HISTORY_KEY, INPUT_KEY, MAX_HISTORY
 
 APP_PATH = Path(__file__).resolve().parent.parent / "app.py"
 
@@ -65,3 +66,37 @@ def test_clear_resets_input_and_result(app):
     app.run()
     assert app.text_input(key=INPUT_KEY).value == ""
     assert result_box(app) == ""
+
+
+def test_history_records_only_successes(app):
+    enter(app, "1 + 1")
+    enter(app, "1 / 0")
+    enter(app, "2 * 3")
+    history = app.session_state[HISTORY_KEY]
+    assert [h.text for h in history] == ["2 * 3", "1 + 1"]
+
+
+def test_history_is_capped(app):
+    for i in range(MAX_HISTORY + 5):
+        enter(app, f"{i} + 1")
+    assert len(app.session_state[HISTORY_KEY]) == MAX_HISTORY
+
+
+def test_history_entry_restores_input_and_result(app):
+    enter(app, "6 * 7")
+    enter(app, "1 + 1")
+    app.sidebar.button(key="history_1").click()
+    app.run()
+    assert app.text_input(key=INPUT_KEY).value == "6 * 7"
+    assert result_box(app) == "42"
+
+
+def test_clear_history_button(app):
+    enter(app, "1 + 1")
+    next(b for b in app.sidebar.button if b.label == "Clear history").click()
+    app.run()
+    assert app.session_state[HISTORY_KEY] == []
+
+
+def test_escape_markdown():
+    assert escape_markdown("2*3_4") == r"2\*3\_4"

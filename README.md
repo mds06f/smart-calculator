@@ -19,6 +19,7 @@ See the [architecture diagram](docs/architecture/) and the
 - Functions: `sqrt`, `abs`, `exp`, `ln`, `log` (natural), `log10`,
   `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `factorial`
 - Exact maths with SymPy (`0.1 + 0.2 = 0.3`, `sin(π/2) = 1`)
+- Session history in the sidebar; click an entry to reuse it
 - Clear error messages for invalid input, out-of-scope questions and
   undefined results
 
@@ -68,7 +69,8 @@ smart-calculator/
 │   ├── validator.py     # Input normalisation and AST safety whitelist
 │   └── engine.py        # AST → SymPy evaluation, limits and formatting
 ├── ui/                   # Streamlit components
-│   └── state.py          # Session state: input -> LLM -> validator/engine -> result
+│   ├── state.py          # Session state: input -> LLM -> validator/engine -> result
+│   └── history.py        # Sidebar history
 ├── tests/                # pytest suite (logic + mocked LLM + AppTest UI tests)
 ├── docs/                 # Architecture and plan
 ├── requirements.txt      # Runtime dependencies (pinned)

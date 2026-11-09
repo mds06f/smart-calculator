@@ -17,7 +17,7 @@ from calc.exceptions import LLMError
 BASE_URL = "https://api.groq.com/openai/v1"
 
 #: Model used for text -> expression conversion (free tier).
-MODEL = "llama-3.3-70b-versatile"
+MODEL = "openai/gpt-oss-20b"
 
 #: Seconds to wait for a response before giving up.
 TIMEOUT = 15.0
@@ -34,8 +34,13 @@ Rules:
 - Reply with ONLY the expression. No words, no explanation, no markdown.
 - Use only: digits, + - * / % ** ( ) and the functions sqrt, abs, exp, ln, \
 log, log10, sin, cos, tan, asin, acos, atan, factorial, and the constants \
-pi, e.
+pi, e. Call functions like sqrt(16) and factorial(6) — always with \
+parentheses, never postfix notation like 6!.
 - If the message is not a math question or calculation, reply with exactly: NOT_MATH
+
+Examples:
+"two plus three times four" -> 2+3*4
+"square root of 144 plus 6 factorial" -> sqrt(144)+factorial(6)
 """
 
 

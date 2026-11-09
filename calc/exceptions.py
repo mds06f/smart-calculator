@@ -16,3 +16,7 @@ class ValidationError(CalculatorError):
 
 class EvaluationError(CalculatorError):
     """Raised when a valid expression cannot be evaluated to a real number."""
+
+
+class LLMError(CalculatorError):
+    """Raised when the LLM cannot be reached or returns something unusable."""

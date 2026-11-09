@@ -1,40 +1,40 @@
+"""Streamlit entry point for the Smart Calculator.
+
+Run locally with::
+
+    streamlit run app.py
+"""
 
 import streamlit as st
 
-from ui.state import compute
+from ui.state import ERROR_KEY, INPUT_KEY, RESULT_KEY, clear, compute, init_state
 
-st.title("🧮 Smart Calculator")
 
-# Initialise session state
-if "expression" not in st.session_state:
-    st.session_state.expression = ""
+def main() -> None:
+    """Build and render the calculator page."""
+    st.set_page_config(page_title="Smart Calculator", page_icon="🧮", layout="centered")
+    init_state()
 
-if "result" not in st.session_state:
-    st.session_state.result = None
+    st.title("🧮 Smart Calculator")
 
-if "calculation_error" not in st.session_state:
-    st.session_state.calculation_error = None
+    with st.form("calculator_form"):
+        st.text_input(
+            "Ask a question or enter an expression",
+            key=INPUT_KEY,
+            placeholder="e.g. two plus three times four",
+        )
+        submitted = st.form_submit_button(
+            "Calculate", type="primary", use_container_width=True
+        )
 
-# Text-only expression input
-with st.form("calculator_form"):
-    st.text_input(
-        "Expression",
-        key="expression",
-        placeholder="e.g. two plus three multiplied by four",
-    )
+    if submitted:
+        compute()
 
-    submitted = st.form_submit_button(
-        "Calculate",
-        type="primary",
-        use_container_width=True,
-    )
+    output = st.session_state[ERROR_KEY] or st.session_state[RESULT_KEY] or ""
+    st.text_input("Result", value=output, disabled=True)
 
-if submitted:
-    compute()
+    st.button("Clear", on_click=clear, use_container_width=True)
 
-# Display result
-if st.session_state.calculation_error:
-    st.error(st.session_state.calculation_error)
 
-elif st.session_state.result is not None:
-    st.success(f"Result: {st.session_state.result}")
+if __name__ == "__main__":
+    main()

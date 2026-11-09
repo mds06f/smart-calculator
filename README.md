@@ -1,23 +1,26 @@
 # Smart Calculator
 
-A scientific calculator built with **Streamlit** and **SymPy**, designed to grow
-into an AI-assisted calculator that understands natural-language questions.
+An AI-assisted calculator built with **Streamlit**, **SymPy** and an LLM
+(xAI/Grok). Type a question or expression in plain English; the LLM turns it
+into a mathematical expression, which is validated and evaluated exactly.
 See the [architecture diagram](docs/architecture/) and the
 [development plan](docs/PLAN.md).
 
-> **Status:** Phase 1 (core calculator) complete. The LLM layer arrives in Phase 2.
+> **Status:** Core pipeline (validator + engine + LLM client) built and
+> tested, with the LLM mocked in tests. A live `XAI_API_KEY` is needed to
+> run the app end-to-end.
 
 ## Features
 
-- Expression input with **Enter** / **=** to evaluate
-- Calculator-style keypad: large digit/operator keys, clear and backspace,
-  plus a compact scientific row (`sin`, `√`, `xʸ`, `π`, `n!`, …); keeps its
-  grid layout on mobile
+- Single text box in, single text box out — type natural language or a
+  direct expression, get the result or a plain-language error
+- LLM converts text to an expression; its output is always re-validated
+  before evaluation, never trusted directly
 - Functions: `sqrt`, `abs`, `exp`, `ln`, `log` (natural), `log10`,
   `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `factorial`
 - Exact maths with SymPy (`0.1 + 0.2 = 0.3`, `sin(π/2) = 1`)
-- Session history in the sidebar; click an entry to reuse it
-- Clear error messages for invalid input and undefined results
+- Clear error messages for invalid input, out-of-scope questions and
+  undefined results
 
 ## Getting started
 
@@ -31,10 +34,24 @@ python -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements-dev.txt
+```
+
+Set an xAI API key before running the app (not needed for the test suite):
+
+```bash
+# Windows (PowerShell)
+$env:XAI_API_KEY = "..."
+# macOS / Linux
+export XAI_API_KEY="..."
+```
+
+or add it to `.streamlit/secrets.toml` as `XAI_API_KEY = "..."` (gitignored).
+
+```bash
 streamlit run app.py
 ```
 
-Run the test suite:
+Run the test suite (the LLM is mocked, so no key is required):
 
 ```bash
 pytest
@@ -46,32 +63,33 @@ pytest
 smart-calculator/
 ├── app.py               # Streamlit entry point
 ├── calc/                # Core logic (no UI code)
-│   ├── exceptions.py    # CalculatorError / ValidationError / EvaluationError
+│   ├── exceptions.py    # CalculatorError / ValidationError / EvaluationError / LLMError
+│   ├── llm.py           # Text -> expression via the xAI (Grok) API
 │   ├── validator.py     # Input normalisation and AST safety whitelist
 │   └── engine.py        # AST → SymPy evaluation, limits and formatting
-├── ui/                  # Streamlit components
-│   ├── state.py         # Session state and widget callbacks
-│   ├── display.py       # Result display
-│   ├── keypad.py        # On-screen keypad
-│   └── history.py       # Sidebar history
-├── tests/               # pytest suite (logic + AppTest UI tests)
-├── docs/                # Architecture and plan
-├── requirements.txt     # Runtime dependencies (pinned)
-└── requirements-dev.txt # Runtime + test dependencies
+├── ui/                   # Streamlit components
+│   └── state.py          # Session state: input -> LLM -> validator/engine -> result
+├── tests/                # pytest suite (logic + mocked LLM + AppTest UI tests)
+├── docs/                 # Architecture and plan
+├── requirements.txt      # Runtime dependencies (pinned)
+└── requirements-dev.txt  # Runtime + test dependencies
 ```
 
 ## How evaluation stays safe
 
-User input is **never** passed to `eval`, `exec` or `sympy.sympify`.
+User input — typed directly or produced by the LLM — is **never** passed to
+`eval`, `exec` or `sympy.sympify`.
 
-1. **Validator:** normalises symbols (`×`, `÷`, `π`, `^`), enforces a length
+1. **LLM:** converts free-form text into a raw expression string. This
+   output is treated as untrusted input, exactly like anything a user types.
+2. **Validator:** normalises symbols (`×`, `÷`, `π`, `^`), enforces a length
    limit and a character whitelist, parses with `ast` and accepts only numeric
    literals, whitelisted operators, the constants `pi`/`e` and whitelisted
    single-argument functions.
-2. **Engine:** walks the validated AST and builds the SymPy expression
+3. **Engine:** walks the validated AST and builds the SymPy expression
    node by node. Power results are capped at 10,000 digits and `factorial` at
    1,000, which blocks DoS inputs such as `9**9**9`.
-3. **UI:** labels are Markdown-escaped and user input is never rendered as
-   HTML. The only HTML injected is a static keypad stylesheet.
+4. **UI:** the result/output box is read-only and never renders HTML.
 
-A full security audit is planned for Phase 3.
+A full security audit (including prompt-injection testing on the LLM step)
+is planned for Phase 3.

@@ -106,5 +106,5 @@ def text_to_expression(
     if not content:
         raise LLMError("The LLM returned an empty response.")
     if content == OUT_OF_SCOPE:
-        raise LLMError("I can only solve calculations.")
+        raise LLMError("Invalid mathematical expression.")
     return content

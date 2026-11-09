@@ -31,8 +31,10 @@ def main() -> None:
     if submitted:
         compute()
 
-    output = st.session_state[ERROR_KEY] or st.session_state[RESULT_KEY] or ""
-    st.text_input("Result", value=output, disabled=True)
+    if st.session_state[ERROR_KEY]:
+        st.error(st.session_state[ERROR_KEY])
+    else:
+        st.text_input("Result", value=st.session_state[RESULT_KEY] or "", disabled=True)
 
     st.button("Clear", on_click=clear, use_container_width=True)
 

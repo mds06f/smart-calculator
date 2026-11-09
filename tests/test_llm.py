@@ -51,7 +51,7 @@ def test_strips_surrounding_whitespace():
 
 def test_out_of_scope_raises_llm_error():
     client = _FakeClient(["NOT_MATH"])
-    with pytest.raises(LLMError, match="only solve calculations"):
+    with pytest.raises(LLMError, match="Invalid mathematical expression"):
         text_to_expression("tell me a joke", lambda: client)
 
 

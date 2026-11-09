@@ -44,20 +44,20 @@ def test_expression_is_evaluated(app):
 
 def test_error_is_shown(app):
     enter(app, "1 / 0")
-    assert result_box(app) == "Result is undefined or infinite."
+    assert app.error[0].value == "Result is undefined or infinite."
 
 
 def test_llm_rejection_is_shown_as_error(monkeypatch):
     from calc.exceptions import LLMError
 
     def refuse(text):
-        raise LLMError("I can only solve calculations.")
+        raise LLMError("Invalid mathematical expression.")
 
     monkeypatch.setattr("ui.state.text_to_expression", refuse)
     at = AppTest.from_file(str(APP_PATH), default_timeout=10)
     at.run()
     enter(at, "tell me a joke")
-    assert result_box(at) == "I can only solve calculations."
+    assert at.error[0].value == "Invalid mathematical expression."
 
 
 def test_clear_resets_input_and_result(app):

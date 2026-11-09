@@ -1,37 +1,40 @@
-"""Streamlit entry point for the Smart Calculator.
-
-Run locally with::
-
-    streamlit run app.py
-"""
 
 import streamlit as st
 
-from calc.validator import MAX_LENGTH
-from ui.display import render_result
-from ui.history import render_history
-from ui.keypad import render_keypad
-from ui.state import EXPRESSION_KEY, compute, init_state
+from ui.state import compute
 
+st.title("🧮 Smart Calculator")
 
-def main() -> None:
-    """Build and render the calculator page."""
-    st.set_page_config(page_title="Smart Calculator", page_icon="🧮", layout="centered")
-    init_state()
+# Initialise session state
+if "expression" not in st.session_state:
+    st.session_state.expression = ""
 
-    st.title("🧮 Smart Calculator")
+if "result" not in st.session_state:
+    st.session_state.result = None
 
+if "calculation_error" not in st.session_state:
+    st.session_state.calculation_error = None
+
+# Text-only expression input
+with st.form("calculator_form"):
     st.text_input(
         "Expression",
-        key=EXPRESSION_KEY,
-        on_change=compute,
-        max_chars=MAX_LENGTH,
-        placeholder="e.g. 2 + 3 × √(16)",
+        key="expression",
+        placeholder="e.g. two plus three multiplied by four",
     )
-    render_result()
-    render_keypad()
-    render_history()
 
+    submitted = st.form_submit_button(
+        "Calculate",
+        type="primary",
+        use_container_width=True,
+    )
 
-if __name__ == "__main__":
-    main()
+if submitted:
+    compute()
+
+# Display result
+if st.session_state.calculation_error:
+    st.error(st.session_state.calculation_error)
+
+elif st.session_state.result is not None:
+    st.success(f"Result: {st.session_state.result}")

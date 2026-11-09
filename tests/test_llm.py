@@ -77,7 +77,7 @@ def test_gives_up_after_max_attempts():
 def test_missing_api_key_raises_llm_error(monkeypatch):
     from calc import llm
 
-    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     monkeypatch.setattr(llm.st, "secrets", {})
     with pytest.raises(LLMError, match="No API key"):
         text_to_expression("2 + 2")

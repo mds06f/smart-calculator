@@ -1,13 +1,13 @@
 # Smart Calculator
 
 An AI-assisted calculator built with **Streamlit**, **SymPy** and an LLM
-(xAI/Grok). Type a question or expression in plain English; the LLM turns it
+(Groq). Type a question or expression in plain English; the LLM turns it
 into a mathematical expression, which is validated and evaluated exactly.
 See the [architecture diagram](docs/architecture/) and the
 [development plan](docs/PLAN.md).
 
 > **Status:** Core pipeline (validator + engine + LLM client) built and
-> tested, with the LLM mocked in tests. A live `XAI_API_KEY` is needed to
+> tested, with the LLM mocked in tests. A live `GROQ_API_KEY` is needed to
 > run the app end-to-end.
 
 ## Features
@@ -36,16 +36,16 @@ source .venv/bin/activate
 pip install -r requirements-dev.txt
 ```
 
-Set an xAI API key before running the app (not needed for the test suite):
+Set a Groq API key before running the app (not needed for the test suite):
 
 ```bash
 # Windows (PowerShell)
-$env:XAI_API_KEY = "..."
+$env:GROQ_API_KEY = "..."
 # macOS / Linux
-export XAI_API_KEY="..."
+export GROQ_API_KEY="..."
 ```
 
-or add it to `.streamlit/secrets.toml` as `XAI_API_KEY = "..."` (gitignored).
+or add it to `.streamlit/secrets.toml` as `GROQ_API_KEY = "..."` (gitignored).
 
 ```bash
 streamlit run app.py
@@ -64,7 +64,7 @@ smart-calculator/
 ├── app.py               # Streamlit entry point
 ├── calc/                # Core logic (no UI code)
 │   ├── exceptions.py    # CalculatorError / ValidationError / EvaluationError / LLMError
-│   ├── llm.py           # Text -> expression via the xAI (Grok) API
+│   ├── llm.py           # Text -> expression via the Groq API
 │   ├── validator.py     # Input normalisation and AST safety whitelist
 │   └── engine.py        # AST → SymPy evaluation, limits and formatting
 ├── ui/                   # Streamlit components

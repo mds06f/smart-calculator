@@ -13,11 +13,11 @@ from openai import APIError, APITimeoutError, OpenAI
 
 from calc.exceptions import LLMError
 
-#: xAI's OpenAI-compatible endpoint.
-BASE_URL = "https://api.x.ai/v1"
+#: Groq's OpenAI-compatible endpoint.
+BASE_URL = "https://api.groq.com/openai/v1"
 
-#: Model used for text -> expression conversion.
-MODEL = "grok-4-fast"
+#: Model used for text -> expression conversion (free tier).
+MODEL = "llama-3.3-70b-versatile"
 
 #: Seconds to wait for a response before giving up.
 TIMEOUT = 15.0
@@ -40,16 +40,16 @@ pi, e.
 
 
 def _api_key() -> Optional[str]:
-    """Read the xAI API key from Streamlit secrets, falling back to env."""
+    """Read the Groq API key from Streamlit secrets, falling back to env."""
     try:
-        key = st.secrets.get("XAI_API_KEY")
+        key = st.secrets.get("GROQ_API_KEY")
     except Exception:
         key = None
-    return key or os.environ.get("XAI_API_KEY")
+    return key or os.environ.get("GROQ_API_KEY")
 
 
 def _default_client() -> OpenAI:
-    """Build the xAI client used outside of tests."""
+    """Build the Groq client used outside of tests."""
     api_key = _api_key()
     if not api_key:
         raise LLMError("No API key configured for the LLM.")

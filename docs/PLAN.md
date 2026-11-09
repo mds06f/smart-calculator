@@ -15,12 +15,12 @@ Goal: a safe expression validator and math engine, usable standalone.
 ## Phase 2 – AI layer ✅ Scaffolded, needs a live key
 Goal: natural-language input through a single text box in, text box out.
 - [x] Streamlit UI: one text input, one disabled text output, Calculate/Clear
-- [x] LLM client (`calc/llm.py`): xAI (Grok) via the OpenAI-compatible API; API key from `st.secrets["XAI_API_KEY"]` / `XAI_API_KEY` env var, never committed
+- [x] LLM client (`calc/llm.py`): Groq via the OpenAI-compatible API; API key from `st.secrets["GROQ_API_KEY"]` / `GROQ_API_KEY` env var, never committed
 - [x] Text → expression generator; its output ALWAYS goes through the Phase 1 validator (`calc.engine.calculate`) before evaluation
 - [x] Out-of-scope guardrail: model returns `NOT_MATH` sentinel → shown as "I can only solve calculations."
 - [x] Timeout and single retry on the API call; errors surface in the output box via `LLMError`
 - [x] Tests with the LLM mocked (`tests/test_llm.py`, `tests/test_app.py`) — no API key needed to run the suite
-- [ ] A real `XAI_API_KEY` set in `st.secrets` / env to exercise the live path
+- [ ] A real `GROQ_API_KEY` set in `st.secrets` / env to exercise the live path
 - [ ] Optional short explanation of the result
 
 ## Phase 3 – Security audit & hardening, deploy

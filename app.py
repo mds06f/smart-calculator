@@ -20,17 +20,6 @@ st.session_state.setdefault("result", None)
 st.session_state.setdefault("error", None)
 st.session_state.setdefault("history", [])  # list of (text, result), newest first
 
-
-def restore(text, result):
-    st.session_state["user_input"] = text
-    st.session_state["result"] = result
-    st.session_state["error"] = None
-
-
-def clear_history():
-    st.session_state["history"] = []
-
-
 st.title("🧮 Smart Calculator")
 
 with st.form("calculator_form"):
@@ -81,9 +70,11 @@ with st.sidebar:
         for index, (text, result) in enumerate(history):
             label = re.sub(r"([\\`*_{}\[\]()#+\-.!])", r"\\\1", f"{text} = {result}")
             if st.button(label, key=f"history_{index}", type="tertiary"):
-                restore(text, result)
+                st.session_state["user_input"] = text
+                st.session_state["result"] = result
+                st.session_state["error"] = None
                 st.rerun()
         st.divider()
         if st.button("Clear history", icon=":material/delete:"):
-            clear_history()
+            st.session_state["history"] = []
             st.rerun()

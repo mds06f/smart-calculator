@@ -12,13 +12,15 @@ import streamlit as st
 from calculator import CalculatorError, calculate
 from llm import text_to_expression
 
-MAX_HISTORY = 20
+MAX_HISTORY = 15  # calculations shown in the sidebar
+MAX_CONVERSATION = 30  # messages kept in memory (llm.py only sends the last few)
 
 st.set_page_config(page_title="Smart Calculator", page_icon="🧮", layout="centered")
 
 st.session_state.setdefault("result", None)
 st.session_state.setdefault("error", None)
 st.session_state.setdefault("history", [])  # list of (text, result), newest first
+st.session_state.setdefault("conversation", [])  # chat messages sent to the LLM for context
 
 st.title("🧮 Smart Calculator")
 
@@ -37,14 +39,20 @@ if submitted:
         st.session_state["error"] = None
     else:
         try:
-            expression = text_to_expression(text)
+            expression = text_to_expression(text, st.session_state["conversation"])
             result = calculate(expression)
             st.session_state["result"] = result
             st.session_state["error"] = None
+
             history = st.session_state["history"]
             if not history or history[0] != (text, result):
                 history.insert(0, (text, result))
                 del history[MAX_HISTORY:]
+
+            conversation = st.session_state["conversation"]
+            conversation.append({"role": "user", "content": text})
+            conversation.append({"role": "assistant", "content": f"{expression} = {result}"})
+            del conversation[:-MAX_CONVERSATION]
         except CalculatorError as exc:
             st.session_state["result"] = None
             st.session_state["error"] = str(exc)

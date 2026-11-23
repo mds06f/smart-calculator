@@ -13,6 +13,7 @@ from calculator import calculate
 
 BASE_URL = "https://api.groq.com/openai/v1"
 MODEL = "openai/gpt-oss-20b"
+CONTEXT_MESSAGES = 5  # only the most recent messages are sent, to cap cost
 
 SYSTEM_PROMPT = """You are a calculator. You only solve calculations — nothing else.
 
@@ -123,9 +124,11 @@ if prompt := st.chat_input("Ask a calculation, e.g. what is 12 times 7?"):
 
     try:
         client = get_client()
-        full_history = [{"role": "system", "content": SYSTEM_PROMPT}] + st.session_state[
-            "messages"
-        ] + [{"role": "user", "content": prompt}]
+        full_history = (
+            [{"role": "system", "content": SYSTEM_PROMPT}]
+            + st.session_state["messages"][-CONTEXT_MESSAGES:]
+            + [{"role": "user", "content": prompt}]
+        )
         new_messages = ask_llm(client, full_history)
         # Only persist the exchange once the full round-trip succeeds, so a
         # failed call never leaves a user message without a reply in history.

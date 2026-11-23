@@ -3,10 +3,6 @@ itself — it extracts two numbers and an operation, and calls `calculate`.
 """
 
 
-class CalculatorError(Exception):
-    """Raised for an unsupported operation or an invalid calculation."""
-
-
 def calculate(a, b, operation):
     """Apply `operation` (+, -, *, /, ^) to numbers a and b."""
     if operation == "+":
@@ -17,8 +13,8 @@ def calculate(a, b, operation):
         return a * b
     if operation == "/":
         if b == 0:
-            raise CalculatorError("Cannot divide by zero.")
+            raise ValueError("Cannot divide by zero.")
         return a / b
     if operation == "^":
         return a**b
-    raise CalculatorError(f"Unsupported operation '{operation}'.")
+    raise ValueError(f"Unsupported operation '{operation}'.")

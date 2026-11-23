@@ -9,7 +9,7 @@ import os
 import streamlit as st
 from openai import OpenAI
 
-from calculator import CalculatorError, calculate
+from calculator import calculate
 
 BASE_URL = "https://api.groq.com/openai/v1"
 MODEL = "openai/gpt-oss-20b"
@@ -57,7 +57,7 @@ TOOLS = [
 def get_client():
     api_key = st.secrets.get("GROQ_API_KEY", None) or os.environ.get("GROQ_API_KEY")
     if not api_key:
-        raise CalculatorError("No API key configured. Set GROQ_API_KEY.")
+        raise ValueError("No API key configured. Set GROQ_API_KEY.")
     return OpenAI(api_key=api_key, base_url=BASE_URL, timeout=15.0)
 
 
@@ -72,7 +72,7 @@ def ask_llm(client, messages):
             model=MODEL, messages=messages + new_messages, tools=TOOLS
         )
     except Exception as exc:
-        raise CalculatorError("Could not reach the LLM. Please try again.") from exc
+        raise ValueError("Could not reach the LLM. Please try again.") from exc
 
     reply = response.choices[0].message
 
@@ -89,7 +89,7 @@ def ask_llm(client, messages):
                 args = json.loads(call.function.arguments)
                 result = calculate(args["a"], args["b"], args["operation"])
                 content = str(result)
-            except (CalculatorError, KeyError, ValueError, TypeError) as exc:
+            except (KeyError, ValueError, TypeError) as exc:
                 content = f"Error: {exc}"
             new_messages.append(
                 {"role": "tool", "tool_call_id": call.id, "content": content}
@@ -100,7 +100,7 @@ def ask_llm(client, messages):
                 model=MODEL, messages=messages + new_messages, tools=TOOLS
             )
         except Exception as exc:
-            raise CalculatorError("Could not reach the LLM. Please try again.") from exc
+            raise ValueError("Could not reach the LLM. Please try again.") from exc
         reply = response.choices[0].message
 
     new_messages.append({"role": "assistant", "content": reply.content or ""})
@@ -132,7 +132,7 @@ if prompt := st.chat_input("Ask a calculation, e.g. what is 12 times 7?"):
         final_reply = new_messages[-1]["content"]
         with st.chat_message("assistant"):
             st.write(final_reply)
-    except CalculatorError as exc:
+    except ValueError as exc:
         st.error(str(exc))
 
 if st.button("Clear chat"):

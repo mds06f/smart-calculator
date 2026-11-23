@@ -1,88 +1,133 @@
-"""Streamlit app: type a question or expression, get the answer.
-
-Flow: user text -> llm.text_to_expression() -> calculator.calculate()
-The LLM's output is never trusted directly; it goes through the same
-validation as anything typed by hand.
+"""Streamlit chat UI. The LLM reads the conversation, decides when a message
+needs arithmetic, and calls the `calculate` tool with two numbers and an
+operation — Python then does the actual math (calculator.py).
 """
 
-import re
+import json
+import os
 
 import streamlit as st
+from openai import OpenAI
 
 from calculator import CalculatorError, calculate
-from llm import text_to_expression
 
-MAX_HISTORY = 15  # calculations shown in the sidebar
-MAX_CONVERSATION = 30  # messages kept in memory (llm.py only sends the last few)
+BASE_URL = "https://api.groq.com/openai/v1"
+MODEL = "openai/gpt-oss-20b"
+
+SYSTEM_PROMPT = """You are a calculator assistant.
+
+For any arithmetic question, extract exactly two numbers and one operation
+(+, -, *, /, ^ for power), then call the `calculate` tool — never compute
+the result yourself. If the user refers to a previous answer (e.g. "add 5
+to it", "multiply that by 3"), use that previous result as one of the
+numbers. If the request isn't a calculation, reply normally without
+calling the tool."""
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "calculate",
+            "description": "Perform a basic arithmetic calculation on two numbers.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "a": {"type": "number", "description": "The first number."},
+                    "b": {"type": "number", "description": "The second number."},
+                    "operation": {
+                        "type": "string",
+                        "enum": ["+", "-", "*", "/", "^"],
+                        "description": "+, -, *, / or ^ (power).",
+                    },
+                },
+                "required": ["a", "b", "operation"],
+            },
+        },
+    }
+]
+
+
+def get_client():
+    api_key = st.secrets.get("GROQ_API_KEY", None) or os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise CalculatorError("No API key configured. Set GROQ_API_KEY.")
+    return OpenAI(api_key=api_key, base_url=BASE_URL, timeout=15.0)
+
+
+def ask_llm(client, messages):
+    """Send the conversation to the LLM, run any tool calls it asks for,
+    and return its final text reply. Returns only the new messages
+    (assistant/tool turns) produced while answering.
+    """
+    new_messages = []
+    try:
+        response = client.chat.completions.create(
+            model=MODEL, messages=messages + new_messages, tools=TOOLS
+        )
+    except Exception as exc:
+        raise CalculatorError("Could not reach the LLM. Please try again.") from exc
+
+    reply = response.choices[0].message
+
+    while reply.tool_calls:
+        new_messages.append(
+            {
+                "role": "assistant",
+                "content": reply.content,
+                "tool_calls": [tc.model_dump() for tc in reply.tool_calls],
+            }
+        )
+        for call in reply.tool_calls:
+            try:
+                args = json.loads(call.function.arguments)
+                result = calculate(args["a"], args["b"], args["operation"])
+                content = str(result)
+            except (CalculatorError, KeyError, ValueError, TypeError) as exc:
+                content = f"Error: {exc}"
+            new_messages.append(
+                {"role": "tool", "tool_call_id": call.id, "content": content}
+            )
+
+        try:
+            response = client.chat.completions.create(
+                model=MODEL, messages=messages + new_messages, tools=TOOLS
+            )
+        except Exception as exc:
+            raise CalculatorError("Could not reach the LLM. Please try again.") from exc
+        reply = response.choices[0].message
+
+    new_messages.append({"role": "assistant", "content": reply.content or ""})
+    return new_messages
+
 
 st.set_page_config(page_title="Smart Calculator", page_icon="🧮", layout="centered")
-
-st.session_state.setdefault("result", None)
-st.session_state.setdefault("error", None)
-st.session_state.setdefault("history", [])  # list of (text, result), newest first
-st.session_state.setdefault("conversation", [])  # chat messages sent to the LLM for context
-
 st.title("🧮 Smart Calculator")
 
-with st.form("calculator_form"):
-    st.text_input(
-        "Ask a question or enter an expression",
-        key="user_input",
-        placeholder="e.g. two plus three times four",
-    )
-    submitted = st.form_submit_button("Calculate", type="primary", use_container_width=True)
+st.session_state.setdefault("messages", [])  # full chat, sent to the LLM for memory
 
-if submitted:
-    text = st.session_state["user_input"].strip()
-    if not text:
-        st.session_state["result"] = None
-        st.session_state["error"] = None
-    else:
-        try:
-            expression = text_to_expression(text, st.session_state["conversation"])
-            result = calculate(expression)
-            st.session_state["result"] = result
-            st.session_state["error"] = None
+for message in st.session_state["messages"]:
+    if message["role"] in ("user", "assistant") and message["content"]:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
 
-            history = st.session_state["history"]
-            if not history or history[0] != (text, result):
-                history.insert(0, (text, result))
-                del history[MAX_HISTORY:]
+if prompt := st.chat_input("Ask a calculation, e.g. what is 12 times 7?"):
+    st.session_state["messages"].append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.write(prompt)
 
-            conversation = st.session_state["conversation"]
-            conversation.append({"role": "user", "content": text})
-            conversation.append({"role": "assistant", "content": f"{expression} = {result}"})
-            del conversation[:-MAX_CONVERSATION]
-        except CalculatorError as exc:
-            st.session_state["result"] = None
-            st.session_state["error"] = str(exc)
+    try:
+        client = get_client()
+        full_history = [{"role": "system", "content": SYSTEM_PROMPT}] + st.session_state[
+            "messages"
+        ]
+        new_messages = ask_llm(client, full_history)
+        st.session_state["messages"].extend(new_messages)
+        final_reply = new_messages[-1]["content"]
+        with st.chat_message("assistant"):
+            st.write(final_reply)
+    except CalculatorError as exc:
+        st.error(str(exc))
 
-if st.session_state["error"]:
-    st.error(st.session_state["error"])
-else:
-    st.text_input("Result", value=st.session_state["result"] or "", disabled=True)
-
-if st.button("Clear", use_container_width=True):
-    st.session_state["user_input"] = ""
-    st.session_state["result"] = None
-    st.session_state["error"] = None
+if st.button("Clear chat"):
+    st.session_state["messages"] = []
     st.rerun()
-
-with st.sidebar:
-    st.header("History")
-    history = st.session_state["history"]
-    if not history:
-        st.caption("No calculations yet.")
-    else:
-        st.caption(f"Last {MAX_HISTORY} results · click to reuse")
-        for index, (text, result) in enumerate(history):
-            label = re.sub(r"([\\`*_{}\[\]()#+\-.!])", r"\\\1", f"{text} = {result}")
-            if st.button(label, key=f"history_{index}", type="tertiary"):
-                st.session_state["user_input"] = text
-                st.session_state["result"] = result
-                st.session_state["error"] = None
-                st.rerun()
-        st.divider()
-        if st.button("Clear history", icon=":material/delete:"):
-            st.session_state["history"] = []
-            st.rerun()

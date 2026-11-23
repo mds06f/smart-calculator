@@ -118,7 +118,6 @@ for message in st.session_state["messages"]:
             st.write(message["content"])
 
 if prompt := st.chat_input("Ask a calculation, e.g. what is 12 times 7?"):
-    st.session_state["messages"].append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.write(prompt)
 
@@ -126,8 +125,11 @@ if prompt := st.chat_input("Ask a calculation, e.g. what is 12 times 7?"):
         client = get_client()
         full_history = [{"role": "system", "content": SYSTEM_PROMPT}] + st.session_state[
             "messages"
-        ]
+        ] + [{"role": "user", "content": prompt}]
         new_messages = ask_llm(client, full_history)
+        # Only persist the exchange once the full round-trip succeeds, so a
+        # failed call never leaves a user message without a reply in history.
+        st.session_state["messages"].append({"role": "user", "content": prompt})
         st.session_state["messages"].extend(new_messages)
         final_reply = new_messages[-1]["content"]
         with st.chat_message("assistant"):

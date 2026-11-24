@@ -1,143 +1,71 @@
-"""Streamlit chat UI. The LLM reads the conversation, decides when a message
-needs arithmetic, and calls the `calculate` tool with two numbers and an
-operation — Python then does the actual math (calculator.py).
+"""Streamlit chat UI. A LangChain agent reads the conversation and decides
+which tool to call (calculator, switches, time, system info) — the tools
+in tools.py do the actual work, the agent only reasons about when to use
+them.
 """
 
-import json
 import os
 
 import streamlit as st
-from openai import OpenAI
+from langchain.agents import create_agent
+from langchain_groq import ChatGroq
 
-from calculator import calculate
+from tools import calculate, change_switch, get_current_time, get_switches, get_system_info
 
-BASE_URL = "https://api.groq.com/openai/v1"
 MODEL = "openai/gpt-oss-20b"
 CONTEXT_MESSAGES = 5  # only the most recent messages are sent, to cap cost
 
-SYSTEM_PROMPT = """You are a calculator. You only solve calculations — nothing else.
+TOOLS = [calculate, get_switches, change_switch, get_current_time, get_system_info]
 
-The `calculate` tool takes exactly two numbers and one operation
-(+, -, *, /, ^ for power) and never computes anything yourself.
+SYSTEM_PROMPT = """You are an assistant with these tools: calculate, get_switches,
+change_switch, get_current_time, get_system_info. Always use a tool instead of
+answering from memory when one applies.
 
-- If the message contains more than one operation (e.g. "9+50-12"), break
-  it down following BODMAS/order of operations (^ before * and /, before +
-  and -) and call `calculate` once per operation, step by step, using each
-  result as an input to the next call. Never ask the user which operation
-  to do first — always resolve it yourself using BODMAS.
-- If the user refers to a previous answer (e.g. "add 5 to it", "multiply
-  that by 3"), use that previous result as one of the numbers.
-- If the message is not a calculation (greetings, general questions,
-  anything non-mathematical), do not call the tool. Reply with exactly:
+- For arithmetic, break a multi-operation expression (e.g. "9+50-12") into one
+  calculate call per operation, following BODMAS/order of operations (^ before
+  * and /, before + and -). Never ask the user which operation to do first.
+- If the user refers to a previous answer (e.g. "add 5 to it"), use that
+  previous result as one of the numbers.
+- If the request doesn't match any of your tools, reply with exactly:
   Invalid operation/expression"""
 
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "calculate",
-            "description": "Perform a basic arithmetic calculation on two numbers.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "a": {"type": "number", "description": "The first number."},
-                    "b": {"type": "number", "description": "The second number."},
-                    "operation": {
-                        "type": "string",
-                        "enum": ["+", "-", "*", "/", "^"],
-                        "description": "+, -, *, / or ^ (power).",
-                    },
-                },
-                "required": ["a", "b", "operation"],
-            },
-        },
-    }
-]
 
-
-def get_client():
+def get_agent():
     api_key = st.secrets.get("GROQ_API_KEY", None) or os.environ.get("GROQ_API_KEY")
     if not api_key:
         raise ValueError("No API key configured. Set GROQ_API_KEY.")
-    return OpenAI(api_key=api_key, base_url=BASE_URL, timeout=15.0)
+    model = ChatGroq(model=MODEL, api_key=api_key, temperature=0)
+    return create_agent(model, tools=TOOLS, system_prompt=SYSTEM_PROMPT)
 
 
-def ask_llm(client, messages):
-    """Send the conversation to the LLM, run any tool calls it asks for,
-    and return its final text reply. Returns only the new messages
-    (assistant/tool turns) produced while answering.
-    """
-    new_messages = []
-    try:
-        response = client.chat.completions.create(
-            model=MODEL, messages=messages + new_messages, tools=TOOLS
-        )
-    except Exception as exc:
-        raise ValueError("Could not reach the LLM. Please try again.") from exc
+st.set_page_config(page_title="Smart Agent", page_icon="🤖", layout="centered")
+st.title("🤖 Smart Agent")
 
-    reply = response.choices[0].message
-
-    while reply.tool_calls:
-        new_messages.append(
-            {
-                "role": "assistant",
-                "content": reply.content,
-                "tool_calls": [tc.model_dump() for tc in reply.tool_calls],
-            }
-        )
-        for call in reply.tool_calls:
-            try:
-                args = json.loads(call.function.arguments)
-                result = calculate(args["a"], args["b"], args["operation"])
-                content = str(result)
-            except (KeyError, ValueError, TypeError) as exc:
-                content = f"Error: {exc}"
-            new_messages.append(
-                {"role": "tool", "tool_call_id": call.id, "content": content}
-            )
-
-        try:
-            response = client.chat.completions.create(
-                model=MODEL, messages=messages + new_messages, tools=TOOLS
-            )
-        except Exception as exc:
-            raise ValueError("Could not reach the LLM. Please try again.") from exc
-        reply = response.choices[0].message
-
-    new_messages.append({"role": "assistant", "content": reply.content or ""})
-    return new_messages
-
-
-st.set_page_config(page_title="Smart Calculator", page_icon="🧮", layout="centered")
-st.title("🧮 Smart Calculator")
-
-st.session_state.setdefault("messages", [])  # full chat, sent to the LLM for memory
+st.session_state.setdefault("messages", [])  # full chat, shown and sent to the agent
 
 for message in st.session_state["messages"]:
-    if message["role"] in ("user", "assistant") and message["content"]:
-        with st.chat_message(message["role"]):
-            st.write(message["content"])
+    with st.chat_message(message["role"]):
+        st.write(message["content"])
 
-if prompt := st.chat_input("Ask a calculation, e.g. what is 12 times 7?"):
+if prompt := st.chat_input("Ask for a calculation, a switch, the time, or system info"):
     with st.chat_message("user"):
         st.write(prompt)
 
     try:
-        client = get_client()
-        full_history = (
-            [{"role": "system", "content": SYSTEM_PROMPT}]
-            + st.session_state["messages"][-CONTEXT_MESSAGES:]
-            + [{"role": "user", "content": prompt}]
-        )
-        new_messages = ask_llm(client, full_history)
-        # Only persist the exchange once the full round-trip succeeds, so a
-        # failed call never leaves a user message without a reply in history.
+        agent = get_agent()
+        history = st.session_state["messages"][-CONTEXT_MESSAGES:] + [
+            {"role": "user", "content": prompt}
+        ]
+        result = agent.invoke({"messages": history})
+        final_reply = result["messages"][-1].content
+
+        # Only persist the exchange once it succeeds, so a failed call never
+        # leaves a user message without a reply in history.
         st.session_state["messages"].append({"role": "user", "content": prompt})
-        st.session_state["messages"].extend(new_messages)
-        final_reply = new_messages[-1]["content"]
+        st.session_state["messages"].append({"role": "assistant", "content": final_reply})
         with st.chat_message("assistant"):
             st.write(final_reply)
-    except ValueError as exc:
+    except Exception as exc:
         st.error(str(exc))
 
 if st.button("Clear chat"):

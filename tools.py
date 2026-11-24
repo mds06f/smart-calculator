@@ -3,6 +3,9 @@ does exactly one small, well-defined thing — the agent decides when to
 call it and with what arguments, but never computes the result itself.
 """
 
+import datetime
+import platform
+
 from langchain_core.tools import tool
 
 # A few fake switches, like the C# sample's SwitchesPlugin. In-memory only
@@ -48,3 +51,15 @@ def calculate(a: float, b: float, operation: str) -> float:
     if operation == "^":
         return a**b
     raise ValueError(f"Unsupported operation '{operation}'.")
+
+
+@tool
+def get_current_time() -> str:
+    """Get the current date and time."""
+    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+@tool
+def get_system_info() -> str:
+    """Get basic info about the system this app is running on."""
+    return f"{platform.system()} {platform.release()}, Python {platform.python_version()}"

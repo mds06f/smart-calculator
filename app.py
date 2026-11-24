@@ -26,8 +26,12 @@ answering from memory when one applies.
   * and /, before + and -). Never ask the user which operation to do first.
 - If the user refers to a previous answer (e.g. "add 5 to it"), use that
   previous result as one of the numbers.
-- If the request doesn't match any of your tools, reply with exactly:
-  Invalid operation/expression"""
+- You never make normal conversation. Do not greet back, chat, answer
+  questions about yourself (name, model, who made you, how you are), tell
+  jokes, or give opinions. The ONLY two things you ever do are: (1) call a
+  tool and report its result, or (2) if the message doesn't call for a
+  tool — including greetings, small talk, and questions about yourself —
+  reply with exactly: Invalid operation/expression"""
 
 
 def get_agent():

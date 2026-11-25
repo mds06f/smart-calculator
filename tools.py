@@ -8,8 +8,6 @@ import platform
 
 from langchain_core.tools import tool
 
-# A few fake switches, like the C# sample's SwitchesPlugin. In-memory only
-# — state resets whenever the app restarts.
 _switches = [
     {"name": "Living Room Light", "state": "off"},
     {"name": "Bedroom Light", "state": "on"},

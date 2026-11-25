@@ -1,11 +1,11 @@
 # Smart Agent
 
-A chat-style agent built with **Streamlit** and **LangChain**, talking to
-Groq's LLMs (OpenAI-compatible). The agent reasons about which tool a
-request needs and calls it — the tools in `tools.py` do the actual work,
-the LLM never computes or looks anything up itself. This follows the same
-pattern as a Semantic Kernel sample project: small, single-purpose plugin
-functions the model can call, instead of one model that does everything.
+A chat-style agent built with **Streamlit**, **LangChain**, and **LangGraph**,
+talking to Groq's LLMs (OpenAI-compatible). A central orchestrator splits
+each request into tasks for three specialist agents, runs independent tasks
+in parallel and dependent ones in sequence, then combines their results —
+the tools in `tools.py` do the actual work, the LLMs never compute or look
+anything up themselves.
 
 ## Features
 
@@ -55,23 +55,33 @@ streamlit run app.py
 
 ```
 smart-calculator/
-├── app.py          # Streamlit chat UI, session memory, builds the agent
-├── tools.py        # Tools the agent can call (calculate, switches, time, system info)
+├── app.py            # Streamlit chat UI, session memory, calls the orchestrator
+├── orchestrator.py   # LangGraph StateGraph that routes requests and combines results
+├── agent.py          # The three specialist LangChain agents
+├── tools.py          # Tools the agents can call (calculate, switches, time, system info)
 └── requirements.txt
 ```
 
 ## How it works
 
 1. **tools.py** defines each capability as a small `@tool`-decorated
-   function — the agent's only way to do math, read/change switch state,
-   or look anything up.
-2. **app.py** builds a `langchain.agents.create_agent` agent out of the
-   Groq chat model and those tools, with a system prompt describing when
-   to use which tool (and to reply `Invalid operation/expression` when
-   none fits).
-3. On each message, the agent decides whether to call a tool, runs it,
-   and keeps going until it has a final text reply — all handled by
-   LangChain's agent loop, not hand-written code.
-4. The exchange is only saved to `st.session_state` once it succeeds, so a
+   function — the only way any agent does math, reads/changes switch
+   state, or looks anything up.
+2. **agent.py** builds three independent `langchain.agents.create_agent`
+   agents, each scoped to one group of tools: a home automation agent
+   (switches), a calculator agent, and a system information agent
+   (time/system info).
+3. **orchestrator.py** is a `langgraph.graph.StateGraph`:
+   - A router step asks the model to split the request into stages of
+     tasks, each tagged with the specialist agent it belongs to.
+   - Tasks within a stage run in parallel (via LangGraph's `Send`); a task
+     only lands in a later stage if it depends on an earlier stage's
+     result, so dependent work still runs in order.
+   - Specialist results are aggregated into one final reply (returned
+     directly if there's only one result, or combined by the model if
+     there are several). An empty plan means no agent applies, and the
+     orchestrator replies `Invalid operation/expression`.
+4. **app.py** just wires the Streamlit UI to `orchestrator.run()`. The
+   exchange is only saved to `st.session_state` once it succeeds, so a
    failed request never leaves a dangling turn in the conversation sent on
    future calls.

@@ -9,17 +9,30 @@ from tools import calculate, change_switch, get_current_time, get_switches, get_
 
 MODEL = "openai/gpt-oss-20b"
 
-HOME_PROMPT = """You manage smart home switches with get_switches and
-change_switch. Always use a tool instead of answering from memory."""
+# Appended to every specialist's prompt as a safety net, in case the
+# orchestrator's router ever misroutes a non-task message to an agent.
+NO_CHITCHAT_GUARD = """You never make normal conversation. Do not greet
+back, chat, answer questions about yourself (name, model, who made you,
+how you are), tell jokes, or give opinions. If the task doesn't call for
+one of your tools, reply with exactly: Invalid operation/expression"""
 
-CALCULATOR_PROMPT = """You do arithmetic with the calculate tool.
+HOME_PROMPT = f"""You manage smart home switches with get_switches and
+change_switch. Always use a tool instead of answering from memory.
+
+{NO_CHITCHAT_GUARD}"""
+
+CALCULATOR_PROMPT = f"""You do arithmetic with the calculate tool.
 Break a multi-operation expression (e.g. "9+50-12") into one calculate call
 per operation, following BODMAS/order of operations (^ before * and /,
-before + and -). Never ask which operation to do first."""
+before + and -). Never ask which operation to do first.
 
-SYSTEM_INFO_PROMPT = """You report the current date/time and system info
+{NO_CHITCHAT_GUARD}"""
+
+SYSTEM_INFO_PROMPT = f"""You report the current date/time and system info
 using get_current_time and get_system_info. Always use a tool instead of
-answering from memory."""
+answering from memory.
+
+{NO_CHITCHAT_GUARD}"""
 
 
 def get_model(api_key: str) -> ChatGroq:

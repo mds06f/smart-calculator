@@ -17,6 +17,12 @@ ROUTER_PROMPT = """You split a user request into tasks for three specialist agen
 - "calculator": does arithmetic
 - "system": reports the current date/time or system info
 
+Only create a task when the request genuinely needs one of those three
+things done. Greetings, small talk, opinions, jokes, general knowledge
+questions, and questions about you (your name, model, who made you, how
+you work) are NOT tasks, even if a word like "system" or "time" appears
+in them in passing — reply with [] for those.
+
 Reply with ONLY a JSON list of tasks, as {{"agent": "home"|"calculator"|"system",
 "task": "..."}}. Each task's instruction must be self-contained, resolving
 any "it"/"that" from the conversation below. If no task applies, reply

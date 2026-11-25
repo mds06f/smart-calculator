@@ -1,7 +1,6 @@
 """Central orchestrator: a LangGraph StateGraph that splits a user request
-into tasks for the specialist agents in agent.py, runs independent tasks in
-parallel and dependent ones in sequential stages, then combines their
-results into one final reply.
+into tasks for the specialist agents in agent.py, dispatches them all
+concurrently, and combines their results into one final reply.
 """
 
 import json
@@ -18,11 +17,10 @@ ROUTER_PROMPT = """You split a user request into tasks for three specialist agen
 - "calculator": does arithmetic
 - "system": reports the current date/time or system info
 
-Reply with ONLY a JSON list of stages. Each stage is a list of tasks that can
-run in parallel, as {{"agent": "home"|"calculator"|"system", "task": "..."}}.
-Each task's instruction must be self-contained, resolving any "it"/"that"
-from the conversation below. Put a task in a later stage only if it needs
-the result of an earlier stage. If no task applies, reply with [].
+Reply with ONLY a JSON list of tasks, as {{"agent": "home"|"calculator"|"system",
+"task": "..."}}. Each task's instruction must be self-contained, resolving
+any "it"/"that" from the conversation below. If no task applies, reply
+with [].
 
 Conversation so far:
 {history}
@@ -43,27 +41,22 @@ class Result(TypedDict):
 
 class State(TypedDict, total=False):
     request: str
-    history: str
-    plan: list
-    stage: int
-    results: Annotated[list, operator.add]
+    history: list
+    tasks: list[Task]
+    results: Annotated[list[Result], operator.add]
     task: Task
     final: str
 
 
-def _format_history(history: list) -> str:
-    return "\n".join(f"{m['role']}: {m['content']}" for m in history) or "(none)"
-
-
-def _parse_plan(reply: str) -> list:
+def _parse_tasks(reply: str) -> list:
     reply = reply.strip()
     if reply.startswith("```"):
         reply = reply.strip("`").removeprefix("json").strip()
     try:
-        plan = json.loads(reply)
+        tasks = json.loads(reply)
     except ValueError:
         return []
-    return plan if isinstance(plan, list) else []
+    return tasks if isinstance(tasks, list) else []
 
 
 def build_graph(api_key: str):
@@ -71,38 +64,23 @@ def build_graph(api_key: str):
     router_model = get_model(api_key)
 
     def router(state: State) -> dict:
-        prompt = ROUTER_PROMPT.format(
-            history=_format_history(state.get("history", [])),
-            request=state["request"],
-        )
+        history = "\n".join(f"{m['role']}: {m['content']}" for m in state.get("history", [])) or "(none)"
+        prompt = ROUTER_PROMPT.format(history=history, request=state["request"])
         reply = router_model.invoke(prompt).content
-        return {"plan": _parse_plan(reply), "stage": 0, "results": []}
+        return {"tasks": _parse_tasks(reply), "results": []}
 
-    def route_stage(state: State):
-        plan = state["plan"]
-        stage = state["stage"]
-        if stage >= len(plan):
+    def dispatch(state: State):
+        if not state["tasks"]:
             return "aggregate"
-        return [
-            Send("run_specialist", {"task": task, "results": state["results"]})
-            for task in plan[stage]
-        ]
+        return [Send("run_specialist", {"task": task}) for task in state["tasks"]]
 
     def run_specialist(state: State) -> dict:
         task = state["task"]
         agent = agents.get(task["agent"])
         if agent is None:
             return {"results": [{**task, "result": f"Unknown agent '{task['agent']}'."}]}
-        messages = []
-        if state["results"]:
-            context = "\n".join(f"- {r['result']}" for r in state["results"])
-            messages.append({"role": "user", "content": f"Earlier results:\n{context}"})
-        messages.append({"role": "user", "content": task["task"]})
-        reply = agent.invoke({"messages": messages})
+        reply = agent.invoke({"messages": [{"role": "user", "content": task["task"]}]})
         return {"results": [{**task, "result": reply["messages"][-1].content}]}
-
-    def advance(state: State) -> dict:
-        return {"stage": state["stage"] + 1}
 
     def aggregate(state: State) -> dict:
         results = state["results"]
@@ -117,13 +95,11 @@ def build_graph(api_key: str):
     graph = StateGraph(State)
     graph.add_node("router", router)
     graph.add_node("run_specialist", run_specialist)
-    graph.add_node("advance", advance)
     graph.add_node("aggregate", aggregate)
 
     graph.add_edge(START, "router")
-    graph.add_conditional_edges("router", route_stage)
-    graph.add_edge("run_specialist", "advance")
-    graph.add_conditional_edges("advance", route_stage)
+    graph.add_conditional_edges("router", dispatch)
+    graph.add_edge("run_specialist", "aggregate")
     graph.add_edge("aggregate", END)
 
     return graph.compile()

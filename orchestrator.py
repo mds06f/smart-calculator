@@ -32,6 +32,12 @@ by a switch count that another task looks up); otherwise false. Each task's
 instruction must be self-contained, resolving any "it"/"that" from the
 conversation below. If no task applies, reply with [].
 
+Switch states, the time, and system info can change between messages — never
+reuse an old value for these from the conversation history, even if it was
+just reported. Instead, always add a fresh "home" or "system" task to look
+it up again. Only reuse a value from history when it's a plain number the
+user explicitly refers back to (e.g. "add 5 to it" after being told a sum).
+
 Conversation so far:
 {history}
 
